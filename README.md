@@ -51,6 +51,52 @@ getting to the actual question. See [CHALLENGE.md](CHALLENGE.md).
 
 ---
 
+## Competition Solution: Duration-Aware Semi-Markov Inference (Candidate B)
+
+This repository includes our complete competition submission system located in [`solution/`](solution/). The system solves the possession segmentation task through a physically grounded, 7-stage probabilistic pipeline with duration-aware semi-Markov sequence decoding, avoiding any manual label fitting or leakage from ground truth.
+
+### Key Architecture Components
+1. **Raw Tracking & Stadium Geometry**: Normalized pitch coordinates ($105\text{ m} \times 68\text{ m}$) from ASCII ATD tracking.
+2. **Confidence-Aware Feature Extraction**: Kinematic filtering, finite velocity clamping, short-gap ball interpolation ($\le 1.5\text{ s}$), and continuous ball visibility confidence.
+3. **Carrier Continuity Mechanism**: Exponential memory ($\tau = 2.0\text{ s}$) with virtual carrier radius ($0.7\text{ m}$) protecting against false turnover artifacts during optical tracking dropouts, coupled with intimate tackle barriers ($0.8\text{ m}$) and rapid kick decay ($v > 6\text{ m/s}$).
+4. **Refined Probabilistic Dead-Ball Detection V2**: 6-stream evidence fusion incorporating boundary sigmoids, elapsed stillness, carrier-holding protection (preventing false dead-ball calls on goalkeepers/shielding players), aerial flight counter-evidence, and collective team dynamics.
+5. **Physical Emission Log-Likelihoods**: Continuous spatial control contrast without label fitting.
+6. **Duration-Aware Semi-Markov Sequence Decoding (Candidate B)**: Exact segment-level dynamic programming over $d \in [1, D_{\max}]$ with soft minimum duration barriers ($d_{\min} = 1.0\text{ s}$), completely eliminating 1-frame chatter artifacts.
+7. **Bisection Calibration**: Domain-prior alignment to nominal $15.0\text{ s}$ mean possession duration ($m = 0.472147$).
+
+### Quick Reproduction
+```bash
+# 1. Install dependencies
+pip install -r solution/requirements.txt
+
+# 2. Run unit & synthetic tests (27 passing tests, no match data needed)
+python -m pytest solution/tests/
+
+# 3. Generate the verified competition submission
+python solution/generate_candidate_b_submission.py
+
+# 4. Validate submission structure
+python evaluation/validate_submission.py solution/submission_phase9_candidate_b.csv
+```
+
+### Verified Submission Integrity
+- **Submission File**: `solution/submission_phase9_candidate_b.csv`
+- **Output Rows**: Exactly 199,319 frames ($0 \dots 199318$)
+- **Label Distribution**: Home ($H$): 59,269 (29.7%), Away ($A$): 38,964 (19.5%), Dead ($D$): 60,624 (30.4%), Unknown ($X$): 40,462 (20.3%)
+- **Possession Segments**: 262 possessions, mean duration 15.00s
+- **Deterministic SHA-256 Digest**: `8d476d796f006dfb52be87e4a0d89c01d74375cd0665451f28877d8b54ad9d03`
+- **Validation**: Passed official `evaluation/validate_submission.py` format checks.
+
+### Critical Limitations & Caveats
+- **Synthetic Benchmark vs. Unseen Match Reality**: Synthetic scenarios verify edge cases, but do not guarantee a specific score on unseen real matches.
+- **Calibration Domain Prior**: Calibrating switch penalties to 15.0s assumes standard match tempo. In extreme matches (constant turnovers or ultra-long possessions), fixed penalties are preferable.
+- **Sensor Occlusion**: Occlusions $> 2\text{ s}$ in congested scrums decay continuity to neutral.
+- **Zero Ground-Truth Tuning**: No parameters were tuned on the public 17-spell validation set. All thresholds are physically motivated.
+
+For full architectural derivations, equations, and audit reports, see [`solution/TECHNICAL.md`](solution/TECHNICAL.md).
+
+---
+
 ## Try it right now
 
 The scorer, a 5-minute ground truth and four working baselines are in this repository. No
@@ -126,6 +172,13 @@ Full description of every asset and how the frames line up: **[DATA.md](DATA.md)
 
 ```
 games.py                    per-match constants, asset paths and the frame alignment
+solution/                   our competition submission pipeline (Candidate B)
+  mtah_possession/          core package (kinematics, carrier continuity, dead ball, semi-Markov)
+  tests/                    unit and synthetic regression test suite (27 tests)
+  run.py                    CLI pipeline execution entry point
+  generate_candidate_b_submission.py  one-command deterministic submission generator
+  requirements.txt          pinned dependencies for solution pipeline
+  TECHNICAL.md              detailed technical architecture, derivations, and audit reports
 evaluation/
   possession_metrics.py     the metric library — every number on the board is defined here
   run_evaluation.py         the scorer. This exact file produces the official result
